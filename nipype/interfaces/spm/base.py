@@ -74,9 +74,23 @@ def scans_for_fname(fname):
 
     """
     if isinstance(fname, list):
-        scans = np.zeros((len(fname),), dtype=object)
-        for sno, f in enumerate(fname):
-            scans[sno] = "%s,1" % f
+        #scans = np.zeros((len(fname),), dtype=object)
+        scans = np.array([], dtype=object).reshape(0,)
+        for f in fname:
+            img = load(f)
+            if len(img.shape) == 3:
+                scans = np.hstack([scans, "%s,1" % f])
+            else:
+                n_scans = img.shape[3]
+                thisrun = np.zeros((n_scans,), dtype=object)
+                for sno in range(n_scans):
+                    thisrun[sno] = "%s,%d" % (f, sno + 1)
+                scans = np.hstack([scans, thisrun])
+            #img = load(f)
+            #if len(img.shape) == 3:
+            #    return np.array(("%s,1" % f,), dtype=object)
+            #else:
+            #    return np.array(("%s,1:%d" % (f, img.shape[3]),), dtype=object)
         return scans
     img = load(fname)
     if len(img.shape) == 3:

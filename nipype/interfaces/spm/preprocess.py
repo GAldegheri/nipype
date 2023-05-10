@@ -749,7 +749,7 @@ class RealignUnwarp(SPMCommand):
         """
         if opt == "in_files":
             return scans_for_fnames(
-                ensure_list(val), keep4d=False, separate_sessions=True
+                ensure_list(val), keep4d=True, separate_sessions=True
             )
         return super(RealignUnwarp, self)._format_arg(opt, spec, val)
 
@@ -924,7 +924,9 @@ class Coregister(SPMCommand):
         """Convert input to appropriate format for spm
         """
         if opt == "target" or (opt == "source" and self.inputs.jobtype != "write"):
-            return scans_for_fnames(ensure_list(val), keep4d=True)
+            #import ipdb; ipdb.set_trace()
+            #return scans_for_fnames(ensure_list(val), keep4d=True)
+            return np.array([scans_for_fnames(ensure_list(val), keep4d=False)[0]], dtype=object)
         if opt == "apply_to_files":
             return np.array(ensure_list(val), dtype=object)
         if opt == "source" and self.inputs.jobtype == "write":

@@ -63,10 +63,10 @@ class PBSPlugin(SGELikeBatchManagerBase):
 
     def _submit_batchtask(self, scriptfile, node):
         cmd = CommandLine(
-            "qsub",
+            'echo',
             environ=dict(os.environ),
             resource_monitor=False,
-            terminal_output="allatonce",
+            terminal_output='stream',
         )
         path = os.path.dirname(scriptfile)
         qsubargs = ""
@@ -89,7 +89,12 @@ class PBSPlugin(SGELikeBatchManagerBase):
         jobnameitems.reverse()
         jobname = ".".join(jobnameitems)
         jobname = jobname[0 : self._max_jobname_len]
-        cmd.inputs.args = "%s -N %s %s" % (qsubargs, jobname, scriptfile)
+
+        py_filename, file_extension = os.path.splitext(scriptfile)
+        py_filename = py_filename.replace('batchscript_', '')
+        py_filename = py_filename + '.py'
+
+        cmd.inputs.args = ' "/home/predatt/giaald/.conda/envs/giacomo/bin/python %s" | qsub %s -N %s' % (py_filename, qsubargs, jobname)
 
         oldlevel = iflogger.level
         iflogger.setLevel(logging.getLevelName("CRITICAL"))
