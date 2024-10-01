@@ -699,7 +699,10 @@ def read_stream(stream, logger=None, encoding=None):
 
 
     """
-    default_encoding = encoding or locale.getdefaultlocale()[1] or "UTF-8"
+    #import pdb
+    #pdb.set_trace()
+    #default_encoding = encoding or locale.getdefaultlocale()[1] or "UTF-8"
+    default_encoding = 'UTF-8'
     logger = logger or fmlogger
     try:
         out = stream.decode(default_encoding)
