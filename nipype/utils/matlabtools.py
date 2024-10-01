@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
 # vi: set ft=python sts=4 ts=4 sw=4 et:
 """ Useful Functions for working with matlab"""
@@ -13,7 +12,7 @@ import numpy as np
 
 
 def fltcols(vals):
-    """ Trivial little function to make 1xN float vector """
+    """Trivial little function to make 1xN float vector"""
     return np.atleast_2d(np.array(vals, dtype=float))
 
 
@@ -57,7 +56,7 @@ def mlab_tempfile(dir=None):
     # infinite loop for some strange reason, we only try 100 times.
     for n in range(100):
         f = tempfile.NamedTemporaryFile(suffix=".m", prefix="tmp_matlab_", dir=dir)
-        # Check the file name for matlab compilance
+        # Check the file name for matlab compliance
         fname = os.path.splitext(os.path.basename(f.name))[0]
         if valid_name.match(fname):
             break

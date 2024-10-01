@@ -47,12 +47,23 @@ def test_FitTensor_inputs():
             argstr="-nthreads %d",
             nohash=True,
         ),
+        out_bval=dict(
+            extensions=None,
+        ),
+        out_bvec=dict(
+            argstr="-export_grad_fsl %s %s",
+            extensions=None,
+        ),
         out_file=dict(
             argstr="%s",
             extensions=None,
             mandatory=True,
             position=-1,
             usedefault=True,
+        ),
+        predicted_signal=dict(
+            argstr="-predicted_signal %s",
+            extensions=None,
         ),
         reg_term=dict(
             argstr="-regularisation %f",
@@ -69,6 +80,9 @@ def test_FitTensor_inputs():
 def test_FitTensor_outputs():
     output_map = dict(
         out_file=dict(
+            extensions=None,
+        ),
+        predicted_signal=dict(
             extensions=None,
         ),
     )

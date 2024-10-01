@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
 # vi: set ft=python sts=4 ts=4 sw=4 et:
 """The freesurfer module provides basic functions for interfacing with
@@ -16,7 +15,8 @@ See the docstrings for the individual classes for 'working' examples.
 """
 import os
 
-from ... import LooseVersion
+from looseversion import LooseVersion
+
 from ...utils.filemanip import fname_presuffix
 from ..base import (
     CommandLine,
@@ -33,7 +33,7 @@ __docformat__ = "restructuredtext"
 
 
 class Info(PackageInfo):
-    """ Freesurfer subject directory and version information.
+    """Freesurfer subject directory and version information.
 
     Examples
     --------
@@ -53,7 +53,7 @@ class Info(PackageInfo):
 
     @classmethod
     def looseversion(cls):
-        """ Return a comparable version object
+        """Return a comparable version object
 
         If no version found, use LooseVersion('0.0.0')
         """
@@ -118,7 +118,7 @@ class FSTraitedSpec(CommandLineInputSpec):
 class FSCommand(CommandLine):
     """General support for FreeSurfer commands.
 
-       Every FS command accepts 'subjects_dir' input.
+    Every FS command accepts 'subjects_dir' input.
     """
 
     input_spec = FSTraitedSpec
@@ -126,7 +126,7 @@ class FSCommand(CommandLine):
     _subjects_dir = None
 
     def __init__(self, **inputs):
-        super(FSCommand, self).__init__(**inputs)
+        super().__init__(**inputs)
         self.inputs.on_trait_change(self._subjects_dir_update, "subjects_dir")
         if not self._subjects_dir:
             self._subjects_dir = Info.subjectsdir()
@@ -146,7 +146,7 @@ class FSCommand(CommandLine):
         if "subjects_dir" in inputs:
             self.inputs.subjects_dir = inputs["subjects_dir"]
         self._subjects_dir_update()
-        return super(FSCommand, self).run(**inputs)
+        return super().run(**inputs)
 
     def _gen_fname(self, basename, fname=None, cwd=None, suffix="_fs", use_ext=True):
         """Define a generic mapping for a single outfile
@@ -208,8 +208,7 @@ class FSSurfaceCommand(FSCommand):
 
 
 class FSScriptCommand(FSCommand):
-    """ Support for Freesurfer script commands with log terminal_output
-    """
+    """Support for Freesurfer script commands with log terminal_output"""
 
     _terminal_output = "file"
     _always_run = False
@@ -242,7 +241,7 @@ class FSCommandOpenMP(FSCommand):
     _num_threads = None
 
     def __init__(self, **inputs):
-        super(FSCommandOpenMP, self).__init__(**inputs)
+        super().__init__(**inputs)
         self.inputs.on_trait_change(self._num_threads_update, "num_threads")
         if not self._num_threads:
             self._num_threads = os.environ.get("OMP_NUM_THREADS", None)
@@ -262,7 +261,7 @@ class FSCommandOpenMP(FSCommand):
         if "num_threads" in inputs:
             self.inputs.num_threads = inputs["num_threads"]
         self._num_threads_update()
-        return super(FSCommandOpenMP, self).run(**inputs)
+        return super().run(**inputs)
 
 
 def no_freesurfer():

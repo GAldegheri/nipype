@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
 # vi: set ft=python sts=4 ts=4 sw=4 et:
 """Parallel workflow execution via multiprocessing
@@ -28,7 +27,7 @@ try:
 except ImportError:
 
     def indent(text, prefix):
-        """ A textwrap.indent replacement for Python < 3.3 """
+        """A textwrap.indent replacement for Python < 3.3"""
         if not prefix:
             return text
         splittext = text.splitlines(True)
@@ -114,7 +113,7 @@ class MultiProcPlugin(DistributedPluginBase):
 
     def __init__(self, plugin_args=None):
         # Init variables and instance attributes
-        super(MultiProcPlugin, self).__init__(plugin_args=plugin_args)
+        super().__init__(plugin_args=plugin_args)
         self._taskresult = {}
         self._task_obj = {}
         self._taskid = 0
@@ -133,7 +132,7 @@ class MultiProcPlugin(DistributedPluginBase):
 
         # Instantiate different thread pools for non-daemon processes
         logger.debug(
-            "[MultiProc] Starting (n_procs=%d, " "mem_gb=%0.2f, cwd=%s)",
+            "[MultiProc] Starting (n_procs=%d, mem_gb=%0.2f, cwd=%s)",
             self.processors,
             self.memory_gb,
             self._cwd,
@@ -182,7 +181,7 @@ class MultiProcPlugin(DistributedPluginBase):
         return self._taskid
 
     def _prerun_check(self, graph):
-        """Check if any node exeeds the available resources"""
+        """Check if any node exceeds the available resources"""
         tasks_mem_gb = []
         tasks_num_th = []
         for node in graph.nodes():
@@ -191,7 +190,7 @@ class MultiProcPlugin(DistributedPluginBase):
 
         if np.any(np.array(tasks_mem_gb) > self.memory_gb):
             logger.warning(
-                "Some nodes exceed the total amount of memory available " "(%0.2fGB).",
+                "Some nodes exceed the total amount of memory available (%0.2fGB).",
                 self.memory_gb,
             )
             if self.raise_insufficient:

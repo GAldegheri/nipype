@@ -44,9 +44,26 @@ def test_MRConvert_inputs():
             mandatory=True,
             position=-2,
         ),
+        json_export=dict(
+            argstr="-json_export %s",
+            extensions=None,
+            mandatory=False,
+        ),
+        json_import=dict(
+            argstr="-json_import %s",
+            extensions=None,
+            mandatory=False,
+        ),
         nthreads=dict(
             argstr="-nthreads %d",
             nohash=True,
+        ),
+        out_bval=dict(
+            extensions=None,
+        ),
+        out_bvec=dict(
+            argstr="-export_grad_fsl %s %s",
+            extensions=None,
         ),
         out_file=dict(
             argstr="%s",
@@ -73,6 +90,15 @@ def test_MRConvert_inputs():
 
 def test_MRConvert_outputs():
     output_map = dict(
+        json_export=dict(
+            extensions=None,
+        ),
+        out_bval=dict(
+            extensions=None,
+        ),
+        out_bvec=dict(
+            extensions=None,
+        ),
         out_file=dict(
             extensions=None,
         ),

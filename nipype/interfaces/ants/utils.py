@@ -1,4 +1,5 @@
 """ANTs' utilities."""
+
 import os
 from warnings import warn
 from ..base import traits, isdefined, TraitedSpec, File, Str, InputMultiObject
@@ -19,6 +20,7 @@ class ImageMathInputSpec(ANTSCommandInputSpec):
         keep_extension=True,
     )
     operation = traits.Enum(
+        # Mathematical Operations
         "m",
         "vm",
         "+",
@@ -37,6 +39,7 @@ class ImageMathInputSpec(ANTSCommandInputSpec):
         "vtotal",
         "Decision",
         "Neg",
+        # Spatial Filtering Operations
         "Project",
         "G",
         "MD",
@@ -47,22 +50,72 @@ class ImageMathInputSpec(ANTSCommandInputSpec):
         "GE",
         "GO",
         "GC",
-        "TruncateImageIntensity",
-        "Laplacian",
-        "GetLargestComponent",
+        "ExtractContours",
+        # Transform Image Operations
+        "Translate",
+        # Tensor Operations
+        "4DTensorTo3DTensor",
+        "ExtractVectorComponent",
+        "TensorColor",
+        "TensorFA",
+        "TensorFADenominator",
+        "TensorFANumerator",
+        "TensorMeanDiffusion",
+        "TensorRadialDiffusion",
+        "TensorAxialDiffusion",
+        "TensorEigenvalue",
+        "TensorToVector",
+        "TensorToVectorComponent",
+        "TensorMask",
+        # Unclassified Operators
+        "Byte",
+        "CorruptImage",
+        "D",
+        "MaurerDistance",
+        "ExtractSlice",
         "FillHoles",
+        "Convolve",
+        "Finite",
+        "FlattenImage",
+        "GetLargestComponent",
+        "Grad",
+        "RescaleImage",
+        "WindowImage",
+        "NeighborhoodStats",
+        "ReplicateDisplacement",
+        "ReplicateImage",
+        "LabelStats",
+        "Laplacian",
+        "Canny",
+        "Lipschitz",
+        "MTR",
+        "Normalize",
         "PadImage",
+        "SigmoidImage",
+        "Sharpen",
+        "UnsharpMask",
+        "PValueImage",
+        "ReplaceVoxelValue",
+        "SetTimeSpacing",
+        "SetTimeSpacingWarp",
+        "stack",
+        "ThresholdAtMean",
+        "TriPlanarView",
+        "TruncateImageIntensity",
         mandatory=True,
         position=3,
         argstr="%s",
         desc="mathematical operations",
     )
     op1 = File(
-        exists=True, mandatory=True, position=-2, argstr="%s", desc="first operator"
+        exists=True, mandatory=True, position=-3, argstr="%s", desc="first operator"
     )
     op2 = traits.Either(
-        File(exists=True), Str, position=-1, argstr="%s", desc="second operator"
+        File(exists=True), Str, position=-2, argstr="%s", desc="second operator"
     )
+
+    args = Str(position=-1, argstr="%s", desc="Additional parameters to the command")
+
     copy_header = traits.Bool(
         True,
         usedefault=True,
@@ -106,7 +159,7 @@ class ImageMath(ANTSCommand, CopyHeaderInterface):
 
     By default, Nipype copies headers from the first input image (``op1``)
     to the output image.
-    For the ``PadImage`` operation, the header cannot be copied from inputs to
+    For some operations, as the ``PadImage`` operation, the header cannot be copied from inputs to
     outputs, and so ``copy_header`` option is automatically set to ``False``.
 
     >>> pad = ImageMath(
@@ -135,22 +188,34 @@ class ImageMath(ANTSCommand, CopyHeaderInterface):
     input_spec = ImageMathInputSpec
     output_spec = ImageMathOuputSpec
     _copy_header_map = {"output_image": "op1"}
+    _no_copy_header_operation = (
+        "PadImage",
+        "LabelStats",
+        "SetTimeSpacing",
+        "SetTimeSpacingWarp",
+        "TriPlanarView",
+    )
 
     def __init__(self, **inputs):
-        super(ImageMath, self).__init__(**inputs)
-        if self.inputs.operation in ("PadImage",):
+        super().__init__(**inputs)
+        if self.inputs.operation in self._no_copy_header_operation:
             self.inputs.copy_header = False
 
         self.inputs.on_trait_change(self._operation_update, "operation")
         self.inputs.on_trait_change(self._copyheader_update, "copy_header")
 
     def _operation_update(self):
-        if self.inputs.operation in ("PadImage",):
+        if self.inputs.operation in self._no_copy_header_operation:
             self.inputs.copy_header = False
 
     def _copyheader_update(self):
-        if self.inputs.copy_header and self.inputs.operation in ("PadImage",):
-            warn("copy_header cannot be updated to True with PadImage as operation.")
+        if (
+            self.inputs.copy_header
+            and self.inputs.operation in self._no_copy_header_operation
+        ):
+            warn(
+                f"copy_header cannot be updated to True with {self.inputs.operation} as operation."
+            )
             self.inputs.copy_header = False
 
 
@@ -240,7 +305,7 @@ class ResampleImageBySpacing(ANTSCommand):
 
             value = " ".join(["%g" % d for d in value])
 
-        return super(ResampleImageBySpacing, self)._format_arg(name, trait_spec, value)
+        return super()._format_arg(name, trait_spec, value)
 
 
 class ThresholdImageInputSpec(ANTSCommandInputSpec):
@@ -444,7 +509,7 @@ class AI(ANTSCommand):
     output_spec = AIOuputSpec
 
     def _run_interface(self, runtime, correct_return_codes=(0,)):
-        runtime = super(AI, self)._run_interface(runtime, correct_return_codes)
+        runtime = super()._run_interface(runtime, correct_return_codes)
 
         self._output = {
             "output_transform": os.path.join(
@@ -463,14 +528,14 @@ class AI(ANTSCommand):
             return spec.argstr % val
 
         if opt == "search_grid":
-            fmtval = "[%s,%s]" % (val[0], "x".join("%g" % v for v in val[1]))
+            fmtval = "[{},{}]".format(val[0], "x".join("%g" % v for v in val[1]))
             return spec.argstr % fmtval
 
         if opt == "fixed_image_mask":
             if isdefined(self.inputs.moving_image_mask):
-                return spec.argstr % ("[%s,%s]" % (val, self.inputs.moving_image_mask))
+                return spec.argstr % (f"[{val},{self.inputs.moving_image_mask}]")
 
-        return super(AI, self)._format_arg(opt, spec, val)
+        return super()._format_arg(opt, spec, val)
 
     def _list_outputs(self):
         return getattr(self, "_output")
@@ -518,7 +583,7 @@ class AverageAffineTransform(ANTSCommand):
     output_spec = AverageAffineTransformOutputSpec
 
     def _format_arg(self, opt, spec, val):
-        return super(AverageAffineTransform, self)._format_arg(opt, spec, val)
+        return super()._format_arg(opt, spec, val)
 
     def _list_outputs(self):
         outputs = self._outputs().get()
@@ -579,7 +644,7 @@ class AverageImages(ANTSCommand):
     output_spec = AverageImagesOutputSpec
 
     def _format_arg(self, opt, spec, val):
-        return super(AverageImages, self)._format_arg(opt, spec, val)
+        return super()._format_arg(opt, spec, val)
 
     def _list_outputs(self):
         outputs = self._outputs().get()
@@ -635,7 +700,7 @@ class MultiplyImages(ANTSCommand):
     output_spec = MultiplyImagesOutputSpec
 
     def _format_arg(self, opt, spec, val):
-        return super(MultiplyImages, self)._format_arg(opt, spec, val)
+        return super()._format_arg(opt, spec, val)
 
     def _list_outputs(self):
         outputs = self._outputs().get()
@@ -687,7 +752,7 @@ class CreateJacobianDeterminantImage(ANTSCommand):
     output_spec = CreateJacobianDeterminantImageOutputSpec
 
     def _format_arg(self, opt, spec, val):
-        return super(CreateJacobianDeterminantImage, self)._format_arg(opt, spec, val)
+        return super()._format_arg(opt, spec, val)
 
     def _list_outputs(self):
         outputs = self._outputs().get()
@@ -839,7 +904,7 @@ class LabelGeometryInputSpec(ANTSCommandInputSpec):
         mandatory=True,
         usedefault=True,
         position=2,
-        desc="Intensity image to extract values from. " "This is an optional input",
+        desc="Intensity image to extract values from. This is an optional input",
     )
     output_file = traits.Str(
         name_source=["label_image"],

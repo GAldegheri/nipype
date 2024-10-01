@@ -1,6 +1,6 @@
-# -*- coding: utf-8 -*-
 """ANTS Apply Transforms interface
 """
+
 import os
 
 from .base import ANTSCommand, ANTSCommandInputSpec
@@ -16,15 +16,13 @@ class WarpTimeSeriesImageMultiTransformInputSpec(ANTSCommandInputSpec):
         argstr="%s",
         mandatory=True,
         copyfile=True,
-        desc=(
-            "image to apply transformation to (generally a " "coregistered functional)"
-        ),
+        desc=("image to apply transformation to (generally a coregistered functional)"),
     )
     out_postfix = traits.Str(
         "_wtsimt",
         argstr="%s",
         usedefault=True,
-        desc=("Postfix that is prepended to all output " "files (default = _wtsimt)"),
+        desc=("Postfix that is prepended to all output files (default = _wtsimt)"),
     )
     reference_image = File(
         argstr="-R %s",
@@ -34,7 +32,7 @@ class WarpTimeSeriesImageMultiTransformInputSpec(ANTSCommandInputSpec):
     tightest_box = traits.Bool(
         argstr="--tightest-bounding-box",
         desc=(
-            "computes tightest bounding box (overrided by " "reference_image if given)"
+            "computes tightest bounding box (overridden by reference_image if given)"
         ),
         xor=["reference_image"],
     )
@@ -130,9 +128,7 @@ ants_Affine.txt'
                     )
 
             return " ".join(series)
-        return super(WarpTimeSeriesImageMultiTransform, self)._format_arg(
-            opt, spec, val
-        )
+        return super()._format_arg(opt, spec, val)
 
     def _list_outputs(self):
         outputs = self._outputs().get()
@@ -143,9 +139,7 @@ ants_Affine.txt'
         return outputs
 
     def _run_interface(self, runtime, correct_return_codes=[0]):
-        runtime = super(WarpTimeSeriesImageMultiTransform, self)._run_interface(
-            runtime, correct_return_codes=[0, 1]
-        )
+        runtime = super()._run_interface(runtime, correct_return_codes=[0, 1])
         if "100 % complete" not in runtime.stdout:
             self.raise_exception(runtime)
         return runtime
@@ -158,9 +152,7 @@ class WarpImageMultiTransformInputSpec(ANTSCommandInputSpec):
     input_image = File(
         argstr="%s",
         mandatory=True,
-        desc=(
-            "image to apply transformation to (generally a " "coregistered functional)"
-        ),
+        desc=("image to apply transformation to (generally a coregistered functional)"),
         position=2,
     )
     output_image = File(
@@ -175,7 +167,7 @@ class WarpImageMultiTransformInputSpec(ANTSCommandInputSpec):
         "_wimt",
         usedefault=True,
         hash_files=False,
-        desc=("Postfix that is prepended to all output " "files (default = _wimt)"),
+        desc=("Postfix that is prepended to all output files (default = _wimt)"),
         xor=["output_image"],
     )
     reference_image = File(
@@ -186,7 +178,7 @@ class WarpImageMultiTransformInputSpec(ANTSCommandInputSpec):
     tightest_box = traits.Bool(
         argstr="--tightest-bounding-box",
         desc=(
-            "computes tightest bounding box (overrided by " "reference_image if given)"
+            "computes tightest bounding box (overridden by reference_image if given)"
         ),
         xor=["reference_image"],
     )
@@ -290,7 +282,7 @@ ants_Affine.txt'
 
             return " ".join(series)
 
-        return super(WarpImageMultiTransform, self)._format_arg(opt, spec, val)
+        return super()._format_arg(opt, spec, val)
 
     def _list_outputs(self):
         outputs = self._outputs().get()
@@ -331,9 +323,7 @@ class ApplyTransformsInputSpec(ANTSCommandInputSpec):
     input_image = File(
         argstr="--input %s",
         mandatory=True,
-        desc=(
-            "image to apply transformation to (generally a " "coregistered functional)"
-        ),
+        desc=("image to apply transformation to (generally a coregistered functional)"),
         exists=True,
     )
     output_image = traits.Str(
@@ -342,7 +332,7 @@ class ApplyTransformsInputSpec(ANTSCommandInputSpec):
     out_postfix = traits.Str(
         "_trans",
         usedefault=True,
-        desc=("Postfix that is appended to all output " "files (default = _trans)"),
+        desc=("Postfix that is appended to all output files (default = _trans)"),
     )
     reference_image = File(
         argstr="--reference-image %s",
@@ -360,6 +350,7 @@ class ApplyTransformsInputSpec(ANTSCommandInputSpec):
         "MultiLabel",
         "Gaussian",
         "BSpline",
+        "GenericLabel",
         argstr="%s",
         usedefault=True,
     )
@@ -368,6 +359,7 @@ class ApplyTransformsInputSpec(ANTSCommandInputSpec):
         traits.Tuple(
             traits.Float(), traits.Float()  # Gaussian/MultiLabel (sigma, alpha)
         ),
+        traits.Tuple(traits.Str()),  # GenericLabel
     )
     transforms = InputMultiObject(
         traits.Either(File(exists=True), "identity"),
@@ -508,8 +500,9 @@ class ApplyTransforms(ANTSCommand):
                 "BSpline",
                 "MultiLabel",
                 "Gaussian",
+                "GenericLabel",
             ] and isdefined(self.inputs.interpolation_parameters):
-                return "--interpolation %s[ %s ]" % (
+                return "--interpolation {}[ {} ]".format(
                     self.inputs.interpolation,
                     ", ".join(
                         [str(param) for param in self.inputs.interpolation_parameters]
@@ -517,7 +510,7 @@ class ApplyTransforms(ANTSCommand):
                 )
             else:
                 return "--interpolation %s" % self.inputs.interpolation
-        return super(ApplyTransforms, self)._format_arg(opt, spec, val)
+        return super()._format_arg(opt, spec, val)
 
     def _list_outputs(self):
         outputs = self._outputs().get()
@@ -614,10 +607,8 @@ class ApplyTransformsToPoints(ANTSCommand):
                     )
                 else:
                     raise Exception(
-                        (
-                            "ERROR: The useInverse list must have the same number "
-                            "of entries as the transformsFileName list."
-                        )
+                        "ERROR: The useInverse list must have the same number "
+                        "of entries as the transformsFileName list."
                     )
             else:
                 retval.append("--transform %s" % self.inputs.transforms[ii])
@@ -626,4 +617,4 @@ class ApplyTransformsToPoints(ANTSCommand):
     def _format_arg(self, opt, spec, val):
         if opt == "transforms":
             return self._get_transform_filenames()
-        return super(ApplyTransformsToPoints, self)._format_arg(opt, spec, val)
+        return super()._format_arg(opt, spec, val)

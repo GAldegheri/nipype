@@ -37,13 +37,19 @@ def test_Generate5tt_inputs():
         ),
         in_file=dict(
             argstr="%s",
-            extensions=None,
             mandatory=True,
             position=-2,
         ),
         nthreads=dict(
             argstr="-nthreads %d",
             nohash=True,
+        ),
+        out_bval=dict(
+            extensions=None,
+        ),
+        out_bvec=dict(
+            argstr="-export_grad_fsl %s %s",
+            extensions=None,
         ),
         out_file=dict(
             argstr="%s",

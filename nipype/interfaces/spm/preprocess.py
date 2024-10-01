@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
 # vi: set ft=python sts=4 ts=4 sw=4 et:
 """SPM wrappers for preprocessing data
@@ -41,10 +40,11 @@ __docformat__ = "restructuredtext"
 class FieldMapInputSpec(SPMCommandInputSpec):
     jobtype = traits.Enum(
         "calculatevdm",
-        "applyvdm",
         usedefault=True,
-        desc="one of: calculatevdm, applyvdm",
+        deprecated="1.9.0",  # Two minor releases in the future
+        desc="Must be 'calculatevdm'; to apply VDM, use the ApplyVDM interface.",
     )
+
     phase_file = File(
         mandatory=True,
         exists=True,
@@ -230,25 +230,150 @@ class FieldMap(SPMCommand):
     _jobname = "fieldmap"
 
     def _format_arg(self, opt, spec, val):
-        """Convert input to appropriate format for spm
-        """
+        """Convert input to appropriate format for spm"""
+
         if opt in ["phase_file", "magnitude_file", "anat_file", "epi_file"]:
             return scans_for_fname(ensure_list(val))
 
-        return super(FieldMap, self)._format_arg(opt, spec, val)
+        return super()._format_arg(opt, spec, val)
 
     def _parse_inputs(self):
-        """validate spm fieldmap options if set to None ignore
-        """
-        einputs = super(FieldMap, self)._parse_inputs()
-        return [{self.inputs.jobtype: einputs[0]}]
+        """validate spm fieldmap options if set to None ignore"""
+
+        einputs = super()._parse_inputs()
+        return [{"calculatevdm": einputs[0]}]
 
     def _list_outputs(self):
         outputs = self._outputs().get()
         jobtype = self.inputs.jobtype
-        if jobtype == "calculatevdm":
-            outputs["vdm"] = fname_presuffix(self.inputs.phase_file, prefix="vdm5_sc")
 
+        outputs["vdm"] = fname_presuffix(self.inputs.phase_file, prefix="vdm5_sc")
+
+        return outputs
+
+
+class ApplyVDMInputSpec(SPMCommandInputSpec):
+    in_files = InputMultiObject(
+        ImageFileSPM(exists=True),
+        field="data.scans",
+        mandatory=True,
+        copyfile=True,
+        desc="list of filenames to apply the vdm to",
+    )
+    vdmfile = File(
+        field="data.vdmfile",
+        desc="Voxel displacement map to use",
+        mandatory=True,
+        copyfile=True,
+    )
+    distortion_direction = traits.Int(
+        2,
+        field="roptions.pedir",
+        desc="phase encode direction input data have been acquired with",
+        usedefault=True,
+    )
+    write_which = traits.ListInt(
+        [2, 1],
+        field="roptions.which",
+        minlen=2,
+        maxlen=2,
+        usedefault=True,
+        desc="If the first value is non-zero, reslice all images. If the second value is non-zero, reslice a mean image.",
+    )
+    interpolation = traits.Range(
+        value=4,
+        low=0,
+        high=7,
+        field="roptions.rinterp",
+        desc="degree of b-spline used for interpolation",
+    )
+    write_wrap = traits.List(
+        traits.Int(),
+        minlen=3,
+        maxlen=3,
+        field="roptions.wrap",
+        desc=("Check if interpolation should wrap in [x,y,z]"),
+    )
+    write_mask = traits.Bool(
+        field="roptions.mask", desc="True/False mask time series images"
+    )
+    out_prefix = traits.String(
+        "u",
+        field="roptions.prefix",
+        usedefault=True,
+        desc="fieldmap corrected output prefix",
+    )
+
+
+class ApplyVDMOutputSpec(TraitedSpec):
+    out_files = OutputMultiPath(
+        traits.Either(traits.List(File(exists=True)), File(exists=True)),
+        desc=("These will be the fieldmap corrected files."),
+    )
+    mean_image = File(exists=True, desc="Mean image")
+
+
+class ApplyVDM(SPMCommand):
+    """Use the fieldmap toolbox from spm to apply the voxel displacement map (VDM) to some epi files.
+
+    http://www.fil.ion.ucl.ac.uk/spm/doc/manual.pdf#page=173
+
+    .. important::
+
+        This interface does not deal with real/imag magnitude images nor
+        with the two phase files case.
+
+    """
+
+    input_spec = ApplyVDMInputSpec
+    output_spec = ApplyVDMOutputSpec
+    _jobtype = "tools"
+    _jobname = "fieldmap"
+
+    def _format_arg(self, opt, spec, val):
+        """Convert input to appropriate format for spm"""
+
+        if opt == 'in_files':
+            return scans_for_fnames(
+                ensure_list(val), keep4d=False, separate_sessions=False
+            )
+        if opt == 'vdmfile':
+            return scans_for_fname(ensure_list(val))
+        return super()._format_arg(opt, spec, val)
+
+    def _parse_inputs(self):
+        """validate spm fieldmap options if set to None ignore"""
+
+        einputs = super()._parse_inputs()
+
+        return [{"applyvdm": einputs[0]}]
+
+    def _list_outputs(self):
+        outputs = self._outputs().get()
+        resliced_all = self.inputs.write_which[0] > 0
+        resliced_mean = self.inputs.write_which[1] > 0
+        if resliced_mean:
+            if isinstance(self.inputs.in_files[0], list):
+                first_image = self.inputs.in_files[0][0]
+            else:
+                first_image = self.inputs.in_files[0]
+            outputs["mean_image"] = fname_presuffix(first_image, prefix="meanu")
+
+        if resliced_all:
+            outputs["out_files"] = []
+            for idx, imgf in enumerate(ensure_list(self.inputs.in_files)):
+                appliedvdm_run = []
+                if isinstance(imgf, list):
+                    for i, inner_imgf in enumerate(ensure_list(imgf)):
+                        newfile = fname_presuffix(
+                            inner_imgf, prefix=self.inputs.out_prefix
+                        )
+                        appliedvdm_run.append(newfile)
+                else:
+                    appliedvdm_run = fname_presuffix(
+                        imgf, prefix=self.inputs.out_prefix
+                    )
+                outputs["out_files"].append(appliedvdm_run)
         return outputs
 
 
@@ -276,7 +401,7 @@ class SliceTimingInputSpec(SPMCommandInputSpec):
         mandatory=True,
     )
     slice_order = traits.List(
-        traits.Either(traits.Int(),traits.Float()),
+        traits.Either(traits.Int(), traits.Float()),
         field="so",
         desc=("1-based order or onset (in ms) in which slices are acquired"),
         mandatory=True,
@@ -329,13 +454,12 @@ class SliceTiming(SPMCommand):
     _jobname = "st"
 
     def _format_arg(self, opt, spec, val):
-        """Convert input to appropriate format for spm
-        """
+        """Convert input to appropriate format for spm"""
         if opt == "in_files":
             return scans_for_fnames(
                 ensure_list(val), keep4d=False, separate_sessions=True
             )
-        return super(SliceTiming, self)._format_arg(opt, spec, val)
+        return super()._format_arg(opt, spec, val)
 
     def _list_outputs(self):
         outputs = self._outputs().get()
@@ -478,8 +602,7 @@ class Realign(SPMCommand):
     _jobname = "realign"
 
     def _format_arg(self, opt, spec, val):
-        """Convert input to appropriate format for spm
-        """
+        """Convert input to appropriate format for spm"""
         if opt == "in_files":
             if self.inputs.jobtype == "write":
                 separate_sessions = False
@@ -488,12 +611,11 @@ class Realign(SPMCommand):
             return scans_for_fnames(
                 val, keep4d=False, separate_sessions=separate_sessions
             )
-        return super(Realign, self)._format_arg(opt, spec, val)
+        return super()._format_arg(opt, spec, val)
 
     def _parse_inputs(self):
-        """validate spm realign options if set to None ignore
-        """
-        einputs = super(Realign, self)._parse_inputs()
+        """validate spm realign options if set to None ignore"""
+        einputs = super()._parse_inputs()
         return [{"%s" % (self.inputs.jobtype): einputs[0]}]
 
     def _list_outputs(self):
@@ -548,7 +670,6 @@ class Realign(SPMCommand):
 
 
 class RealignUnwarpInputSpec(SPMCommandInputSpec):
-
     in_files = InputMultiObject(
         traits.Either(
             ImageFileSPM(exists=True), traits.List(ImageFileSPM(exists=True))
@@ -745,17 +866,15 @@ class RealignUnwarp(SPMCommand):
     _jobname = "realignunwarp"
 
     def _format_arg(self, opt, spec, val):
-        """Convert input to appropriate format for spm
-        """
+        """Convert input to appropriate format for spm"""
         if opt == "in_files":
             return scans_for_fnames(
                 ensure_list(val), keep4d=True, separate_sessions=True
             )
-        return super(RealignUnwarp, self)._format_arg(opt, spec, val)
+        return super()._format_arg(opt, spec, val)
 
     def _parse_inputs(self, skip=()):
-
-        spmdict = super(RealignUnwarp, self)._parse_inputs(skip=())[0]
+        spmdict = super()._parse_inputs(skip=())[0]
 
         if isdefined(self.inputs.phase_map):
             pmscan = spmdict["data"]["pmscan"]
@@ -921,8 +1040,7 @@ class Coregister(SPMCommand):
     _jobname = "coreg"
 
     def _format_arg(self, opt, spec, val):
-        """Convert input to appropriate format for spm
-        """
+        """Convert input to appropriate format for spm"""
         if opt == "target" or (opt == "source" and self.inputs.jobtype != "write"):
             #import ipdb; ipdb.set_trace()
             #return scans_for_fnames(ensure_list(val), keep4d=True)
@@ -934,17 +1052,14 @@ class Coregister(SPMCommand):
                 return scans_for_fnames(val + self.inputs.apply_to_files)
             else:
                 return scans_for_fnames(val)
-        return super(Coregister, self)._format_arg(opt, spec, val)
+        return super()._format_arg(opt, spec, val)
 
     def _parse_inputs(self):
-        """validate spm coregister options if set to None ignore
-        """
+        """validate spm coregister options if set to None ignore"""
         if self.inputs.jobtype == "write":
-            einputs = super(Coregister, self)._parse_inputs(
-                skip=("jobtype", "apply_to_files")
-            )
+            einputs = super()._parse_inputs(skip=("jobtype", "apply_to_files"))
         else:
-            einputs = super(Coregister, self)._parse_inputs(skip=("jobtype"))
+            einputs = super()._parse_inputs(skip=("jobtype"))
         jobtype = self.inputs.jobtype
         return [{"%s" % (jobtype): einputs[0]}]
 
@@ -1072,7 +1187,7 @@ class NormalizeInputSpec(SPMCommandInputSpec):
 
 class NormalizeOutputSpec(TraitedSpec):
     normalization_parameters = OutputMultiPath(
-        File(exists=True), desc=("MAT files containing the normalization parameters"),
+        File(exists=True), desc=("MAT files containing the normalization parameters")
     )
     normalized_source = OutputMultiPath(
         File(exists=True), desc="Normalized source files"
@@ -1100,8 +1215,7 @@ class Normalize(SPMCommand):
     _jobname = "normalise"
 
     def _format_arg(self, opt, spec, val):
-        """Convert input to appropriate format for spm
-        """
+        """Convert input to appropriate format for spm"""
         if opt == "template":
             return scans_for_fname(ensure_list(val))
         if opt == "source":
@@ -1113,14 +1227,11 @@ class Normalize(SPMCommand):
         if opt in ["write_wrap"]:
             if len(val) != 3:
                 raise ValueError("%s must have 3 elements" % opt)
-        return super(Normalize, self)._format_arg(opt, spec, val)
+        return super()._format_arg(opt, spec, val)
 
     def _parse_inputs(self):
-        """Validate spm normalize options if set to None ignore
-        """
-        einputs = super(Normalize, self)._parse_inputs(
-            skip=("jobtype", "apply_to_files")
-        )
+        """Validate spm normalize options if set to None ignore"""
+        einputs = super()._parse_inputs(skip=("jobtype", "apply_to_files"))
         if isdefined(self.inputs.apply_to_files):
             inputfiles = deepcopy(self.inputs.apply_to_files)
             if isdefined(self.inputs.source):
@@ -1335,8 +1446,7 @@ class Normalize12(SPMCommand):
     _jobname = "normalise"
 
     def _format_arg(self, opt, spec, val):
-        """Convert input to appropriate format for spm
-        """
+        """Convert input to appropriate format for spm"""
         if opt == "tpm":
             return scans_for_fname(ensure_list(val))
         if opt == "image_to_align":
@@ -1348,14 +1458,11 @@ class Normalize12(SPMCommand):
         if opt in ["nonlinear_regularization"]:
             if len(val) != 5:
                 raise ValueError("%s must have 5 elements" % opt)
-        return super(Normalize12, self)._format_arg(opt, spec, val)
+        return super()._format_arg(opt, spec, val)
 
     def _parse_inputs(self, skip=()):
-        """validate spm normalize options if set to None ignore
-        """
-        einputs = super(Normalize12, self)._parse_inputs(
-            skip=("jobtype", "apply_to_files")
-        )
+        """validate spm normalize options if set to None ignore"""
+        einputs = super()._parse_inputs(skip=("jobtype", "apply_to_files"))
         if isdefined(self.inputs.apply_to_files):
             inputfiles = deepcopy(self.inputs.apply_to_files)
             if isdefined(self.inputs.image_to_align):
@@ -1380,25 +1487,22 @@ class Normalize12(SPMCommand):
                 outputs["deformation_field"].append(fname_presuffix(imgf, prefix="y_"))
             outputs["deformation_field"] = simplify_list(outputs["deformation_field"])
 
-        if self.inputs.jobtype == "estimate":
-            if isdefined(self.inputs.apply_to_files):
-                outputs["normalized_files"] = self.inputs.apply_to_files
-            outputs["normalized_image"] = fname_presuffix(
-                self.inputs.image_to_align, prefix="w"
-            )
-        elif "write" in self.inputs.jobtype:
+        if "write" in self.inputs.jobtype:
             outputs["normalized_files"] = []
             if isdefined(self.inputs.apply_to_files):
                 filelist = ensure_list(self.inputs.apply_to_files)
                 for f in filelist:
                     if isinstance(f, list):
-                        run = [fname_presuffix(in_f, prefix="w") for in_f in f]
+                        run = [
+                            fname_presuffix(in_f, prefix=self.inputs.out_prefix)
+                            for in_f in f
+                        ]
                     else:
-                        run = [fname_presuffix(f, prefix="w")]
+                        run = [fname_presuffix(f, prefix=self.inputs.out_prefix)]
                     outputs["normalized_files"].extend(run)
             if isdefined(self.inputs.image_to_align):
                 outputs["normalized_image"] = fname_presuffix(
-                    self.inputs.image_to_align, prefix="w"
+                    self.inputs.image_to_align, prefix=self.inputs.out_prefix
                 )
 
         return outputs
@@ -1528,7 +1632,7 @@ class SegmentInputSpec(SPMCommandInputSpec):
         desc="FWHM of Gaussian smoothness of bias",
     )
     sampling_distance = traits.Float(
-        field="opts.samp", desc=("Sampling distance on data for parameter estimation"),
+        field="opts.samp", desc=("Sampling distance on data for parameter estimation")
     )
     mask_image = File(
         exists=True,
@@ -1539,7 +1643,7 @@ class SegmentInputSpec(SPMCommandInputSpec):
 
 class SegmentOutputSpec(TraitedSpec):
     native_gm_image = File(desc="native space grey probability map")
-    normalized_gm_image = File(desc="normalized grey probability map",)
+    normalized_gm_image = File(desc="normalized grey probability map")
     modulated_gm_image = File(desc=("modulated, normalized grey probability map"))
     native_wm_image = File(desc="native space white probability map")
     normalized_wm_image = File(desc="normalized white probability map")
@@ -1587,8 +1691,7 @@ class Segment(SPMCommand):
         SPMCommand.__init__(self, **inputs)
 
     def _format_arg(self, opt, spec, val):
-        """Convert input to appropriate format for spm
-        """
+        """Convert input to appropriate format for spm"""
         clean_masks_dict = {"no": 0, "light": 1, "thorough": 2}
 
         if opt in ["data", "tissue_prob_maps"]:
@@ -1602,7 +1705,7 @@ class Segment(SPMCommand):
             return scans_for_fname(val)
         if opt == "clean_masks":
             return clean_masks_dict[val]
-        return super(Segment, self)._format_arg(opt, spec, val)
+        return super()._format_arg(opt, spec, val)
 
     def _list_outputs(self):
         outputs = self._outputs().get()
@@ -1615,7 +1718,7 @@ class Segment(SPMCommand):
                     [("modulated", "mw"), ("normalized", "w"), ("native", "")]
                 ):
                     if getattr(self.inputs, outtype)[idx]:
-                        outfield = "%s_%s_image" % (image, tissue)
+                        outfield = f"{image}_{tissue}_image"
                         outputs[outfield] = fname_presuffix(
                             f, prefix="%sc%d" % (prefix, tidx + 1)
                         )
@@ -1684,7 +1787,7 @@ class NewSegmentInputSpec(SPMCommandInputSpec):
         ),
     )
     sampling_distance = traits.Float(
-        field="warp.samp", desc=("Sampling distance on data for parameter estimation"),
+        field="warp.samp", desc=("Sampling distance on data for parameter estimation")
     )
     write_deformation_fields = traits.List(
         traits.Bool(),
@@ -1765,8 +1868,7 @@ class NewSegment(SPMCommand):
         SPMCommand.__init__(self, **inputs)
 
     def _format_arg(self, opt, spec, val):
-        """Convert input to appropriate format for spm
-        """
+        """Convert input to appropriate format for spm"""
 
         if opt in ["channel_files", "channel_info"]:
             # structure have to be recreated because of some weird traits error
@@ -1791,11 +1893,9 @@ class NewSegment(SPMCommand):
                 new_tissues.append(new_tissue)
             return new_tissues
         elif opt == "write_deformation_fields":
-            return super(NewSegment, self)._format_arg(
-                opt, spec, [int(val[0]), int(val[1])]
-            )
+            return super()._format_arg(opt, spec, [int(val[0]), int(val[1])])
         else:
-            return super(NewSegment, self)._format_arg(opt, spec, val)
+            return super()._format_arg(opt, spec, val)
 
     def _list_outputs(self):
         outputs = self._outputs().get()
@@ -1933,7 +2033,7 @@ class MultiChannelNewSegmentInputSpec(SPMCommandInputSpec):
         ),
     )
     sampling_distance = traits.Float(
-        field="warp.samp", desc=("Sampling distance on data for parameter estimation"),
+        field="warp.samp", desc=("Sampling distance on data for parameter estimation")
     )
     write_deformation_fields = traits.List(
         traits.Bool(),
@@ -2013,8 +2113,7 @@ class MultiChannelNewSegment(SPMCommand):
         SPMCommand.__init__(self, **inputs)
 
     def _format_arg(self, opt, spec, val):
-        """Convert input to appropriate format for spm
-        """
+        """Convert input to appropriate format for spm"""
 
         if opt == "channels":
             # structure have to be recreated because of some weird traits error
@@ -2042,11 +2141,9 @@ class MultiChannelNewSegment(SPMCommand):
                 new_tissues.append(new_tissue)
             return new_tissues
         elif opt == "write_deformation_fields":
-            return super(MultiChannelNewSegment, self)._format_arg(
-                opt, spec, [int(val[0]), int(val[1])]
-            )
+            return super()._format_arg(opt, spec, [int(val[0]), int(val[1])])
         else:
-            return super(MultiChannelNewSegment, self)._format_arg(opt, spec, val)
+            return super()._format_arg(opt, spec, val)
 
     def _list_outputs(self):
         outputs = self._outputs().get()
@@ -2183,7 +2280,7 @@ class Smooth(SPMCommand):
                 else:
                     return val
 
-        return super(Smooth, self)._format_arg(opt, spec, val)
+        return super()._format_arg(opt, spec, val)
 
     def _list_outputs(self):
         outputs = self._outputs().get()
@@ -2281,8 +2378,7 @@ class DARTEL(SPMCommand):
     _jobname = "dartel"
 
     def _format_arg(self, opt, spec, val):
-        """Convert input to appropriate format for spm
-        """
+        """Convert input to appropriate format for spm"""
 
         if opt in ["image_files"]:
             return scans_for_fnames(val, keep4d=True, separate_sessions=True)
@@ -2306,7 +2402,7 @@ class DARTEL(SPMCommand):
             new_param["its"] = val[2]
             return [new_param]
         else:
-            return super(DARTEL, self)._format_arg(opt, spec, val)
+            return super()._format_arg(opt, spec, val)
 
     def _list_outputs(self):
         outputs = self._outputs().get()
@@ -2322,7 +2418,7 @@ class DARTEL(SPMCommand):
         for filename in self.inputs.image_files[0]:
             pth, base, ext = split_filename(filename)
             outputs["dartel_flow_fields"].append(
-                os.path.realpath("u_%s_%s%s" % (base, self.inputs.template_prefix, ext))
+                os.path.realpath(f"u_{base}_{self.inputs.template_prefix}{ext}")
             )
         return outputs
 
@@ -2409,8 +2505,7 @@ class DARTELNorm2MNI(SPMCommand):
     _jobname = "dartel"
 
     def _format_arg(self, opt, spec, val):
-        """Convert input to appropriate format for spm
-        """
+        """Convert input to appropriate format for spm"""
         if opt in ["template_file"]:
             return np.array([val], dtype=object)
         elif opt in ["flowfield_files"]:
@@ -2427,7 +2522,7 @@ class DARTELNorm2MNI(SPMCommand):
             else:
                 return [val, val, val]
         else:
-            return super(DARTELNorm2MNI, self)._format_arg(opt, spec, val)
+            return super()._format_arg(opt, spec, val)
 
     def _list_outputs(self):
         outputs = self._outputs().get()
@@ -2441,9 +2536,7 @@ class DARTELNorm2MNI(SPMCommand):
             prefix = "s" + prefix
         for filename in self.inputs.apply_to_files:
             pth, base, ext = split_filename(filename)
-            outputs["normalized_files"].append(
-                os.path.realpath("%s%s%s" % (prefix, base, ext))
-            )
+            outputs["normalized_files"].append(os.path.realpath(f"{prefix}{base}{ext}"))
 
         return outputs
 
@@ -2503,15 +2596,14 @@ class CreateWarped(SPMCommand):
     _jobname = "dartel"
 
     def _format_arg(self, opt, spec, val):
-        """Convert input to appropriate format for spm
-        """
+        """Convert input to appropriate format for spm"""
 
         if opt in ["image_files"]:
             return scans_for_fnames(val, keep4d=True, separate_sessions=True)
         if opt in ["flowfield_files"]:
             return scans_for_fnames(val, keep4d=True)
         else:
-            return super(CreateWarped, self)._format_arg(opt, spec, val)
+            return super()._format_arg(opt, spec, val)
 
     def _list_outputs(self):
         outputs = self._outputs().get()
@@ -2519,9 +2611,9 @@ class CreateWarped(SPMCommand):
         for filename in self.inputs.image_files:
             pth, base, ext = split_filename(filename)
             if isdefined(self.inputs.modulate) and self.inputs.modulate:
-                outputs["warped_files"].append(os.path.realpath("mw%s%s" % (base, ext)))
+                outputs["warped_files"].append(os.path.realpath(f"mw{base}{ext}"))
             else:
-                outputs["warped_files"].append(os.path.realpath("w%s%s" % (base, ext)))
+                outputs["warped_files"].append(os.path.realpath(f"w{base}{ext}"))
         return outputs
 
 
@@ -2548,8 +2640,7 @@ class ApplyDeformations(SPMCommand):
     _jobname = "defs"
 
     def _format_arg(self, opt, spec, val):
-        """Convert input to appropriate format for spm
-        """
+        """Convert input to appropriate format for spm"""
         if opt in ["deformation_field", "reference_volume"]:
             val = [val]
 
@@ -2559,7 +2650,7 @@ class ApplyDeformations(SPMCommand):
             return scans_for_fnames(val, keep4d=False, separate_sessions=False)
 
         else:
-            return super(ApplyDeformations, self)._format_arg(opt, spec, val)
+            return super()._format_arg(opt, spec, val)
 
     def _list_outputs(self):
         outputs = self._outputs().get()
@@ -2571,7 +2662,6 @@ class ApplyDeformations(SPMCommand):
 
 
 class VBMSegmentInputSpec(SPMCommandInputSpec):
-
     in_files = InputMultiPath(
         ImageFileSPM(exists=True),
         desc="A list of files to be segmented",
@@ -2587,7 +2677,7 @@ class VBMSegmentInputSpec(SPMCommandInputSpec):
         (2, 2, 2, 3, 4, 2),
         *([traits.Int()] * 6),
         usedefault=True,
-        desc="number of gaussians for each tissue class"
+        desc="number of gaussians for each tissue class",
     )
     bias_regularization = traits.Enum(
         0.0001,
@@ -2617,7 +2707,7 @@ class VBMSegmentInputSpec(SPMCommandInputSpec):
         desc="Controls balance between parameters and data",
     )
 
-    spatial_normalization = traits.Enum("high", "low", usedefault=True,)
+    spatial_normalization = traits.Enum("high", "low", usedefault=True)
     dartel_template = ImageFileSPM(
         exists=True, field="estwrite.extopts.dartelwarp.normhigh.darteltpm"
     )
@@ -2638,9 +2728,9 @@ class VBMSegmentInputSpec(SPMCommandInputSpec):
     )
     display_results = traits.Bool(True, usedefault=True, field="estwrite.extopts.print")
 
-    gm_native = traits.Bool(False, usedefault=True, field="estwrite.output.GM.native",)
+    gm_native = traits.Bool(False, usedefault=True, field="estwrite.output.GM.native")
     gm_normalized = traits.Bool(
-        False, usedefault=True, field="estwrite.output.GM.warped",
+        False, usedefault=True, field="estwrite.output.GM.warped"
     )
     gm_modulated_normalized = traits.Range(
         0,
@@ -2659,9 +2749,9 @@ class VBMSegmentInputSpec(SPMCommandInputSpec):
         desc="0=None,1=rigid(SPM8 default),2=affine",
     )
 
-    wm_native = traits.Bool(False, usedefault=True, field="estwrite.output.WM.native",)
+    wm_native = traits.Bool(False, usedefault=True, field="estwrite.output.WM.native")
     wm_normalized = traits.Bool(
-        False, usedefault=True, field="estwrite.output.WM.warped",
+        False, usedefault=True, field="estwrite.output.WM.warped"
     )
     wm_modulated_normalized = traits.Range(
         0,
@@ -2680,11 +2770,9 @@ class VBMSegmentInputSpec(SPMCommandInputSpec):
         desc="0=None,1=rigid(SPM8 default),2=affine",
     )
 
-    csf_native = traits.Bool(
-        False, usedefault=True, field="estwrite.output.CSF.native",
-    )
+    csf_native = traits.Bool(False, usedefault=True, field="estwrite.output.CSF.native")
     csf_normalized = traits.Bool(
-        False, usedefault=True, field="estwrite.output.CSF.warped",
+        False, usedefault=True, field="estwrite.output.CSF.warped"
     )
     csf_modulated_normalized = traits.Range(
         0,
@@ -2704,13 +2792,13 @@ class VBMSegmentInputSpec(SPMCommandInputSpec):
     )
 
     bias_corrected_native = traits.Bool(
-        False, usedefault=True, field="estwrite.output.bias.native",
+        False, usedefault=True, field="estwrite.output.bias.native"
     )
     bias_corrected_normalized = traits.Bool(
-        True, usedefault=True, field="estwrite.output.bias.warped",
+        True, usedefault=True, field="estwrite.output.bias.warped"
     )
     bias_corrected_affine = traits.Bool(
-        False, usedefault=True, field="estwrite.output.bias.affine",
+        False, usedefault=True, field="estwrite.output.bias.affine"
     )
 
     pve_label_native = traits.Bool(
@@ -2743,7 +2831,6 @@ class VBMSegmentInputSpec(SPMCommandInputSpec):
 
 
 class VBMSegmentOuputSpec(TraitedSpec):
-
     native_class_images = traits.List(
         traits.List(File(exists=True)), desc="native space probability maps"
     )
@@ -2872,7 +2959,7 @@ class VBMSegment(SPMCommand):
                 )
             if self.inputs.pve_label_normalized:
                 outputs["pve_label_normalized_images"].append(
-                    os.path.join(pth, "w%sp0%s.nii" % (dartel_px, base))
+                    os.path.join(pth, f"w{dartel_px}p0{base}.nii")
                 )
             if self.inputs.pve_label_dartel == 1:
                 outputs["pve_label_registered_images"].append(
@@ -2889,16 +2976,16 @@ class VBMSegment(SPMCommand):
                 )
             if self.inputs.bias_corrected_normalized:
                 outputs["normalized_bias_corrected_images"].append(
-                    os.path.join(pth, "wm%s%s.nii" % (dartel_px, base))
+                    os.path.join(pth, f"wm{dartel_px}{base}.nii")
                 )
 
             if self.inputs.deformation_field[0]:
                 outputs["forward_deformation_field"].append(
-                    os.path.join(pth, "y_%s%s.nii" % (dartel_px, base))
+                    os.path.join(pth, f"y_{dartel_px}{base}.nii")
                 )
             if self.inputs.deformation_field[1]:
                 outputs["inverse_deformation_field"].append(
-                    os.path.join(pth, "iy_%s%s.nii" % (dartel_px, base))
+                    os.path.join(pth, f"iy_{dartel_px}{base}.nii")
                 )
 
             if self.inputs.jacobian_determinant and do_dartel:
@@ -2908,8 +2995,7 @@ class VBMSegment(SPMCommand):
         return outputs
 
     def _format_arg(self, opt, spec, val):
-        """Convert input to appropriate format for spm
-        """
+        """Convert input to appropriate format for spm"""
         if opt in ["in_files"]:
             return scans_for_fnames(val, keep4d=True)
         elif opt in ["spatial_normalization"]:
@@ -2918,18 +3004,16 @@ class VBMSegment(SPMCommand):
         elif opt in ["dartel_template"]:
             return np.array([val], dtype=object)
         elif opt in ["deformation_field"]:
-            return super(VBMSegment, self)._format_arg(
-                opt, spec, [int(val[0]), int(val[1])]
-            )
+            return super()._format_arg(opt, spec, [int(val[0]), int(val[1])])
         else:
-            return super(VBMSegment, self)._format_arg(opt, spec, val)
+            return super()._format_arg(opt, spec, val)
 
     def _parse_inputs(self):
         if self.inputs.spatial_normalization == "low":
-            einputs = super(VBMSegment, self)._parse_inputs(
+            einputs = super()._parse_inputs(
                 skip=("spatial_normalization", "dartel_template")
             )
             einputs[0]["estwrite"]["extopts"]["dartelwarp"] = {"normlow": 1}
             return einputs
         else:
-            return super(VBMSegment, self)._parse_inputs(skip=("spatial_normalization"))
+            return super()._parse_inputs(skip=("spatial_normalization"))

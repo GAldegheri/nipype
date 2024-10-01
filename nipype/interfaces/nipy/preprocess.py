@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import os
 
 import nibabel as nb
@@ -61,7 +60,7 @@ class ComputeMask(NipyBaseInterface):
 
         brain_mask = compute_mask(**args)
         _, name, ext = split_filename(self.inputs.mean_volume)
-        self._brain_mask_path = os.path.abspath("%s_mask.%s" % (name, ext))
+        self._brain_mask_path = os.path.abspath(f"{name}_mask.{ext}")
         nb.save(
             nb.Nifti1Image(brain_mask.astype(np.uint8), nii.affine),
             self._brain_mask_path,
@@ -120,7 +119,7 @@ class SpaceTimeRealignerOutputSpec(TraitedSpec):
     out_file = OutputMultiPath(File(exists=True), desc="Realigned files")
     par_file = OutputMultiPath(
         File(exists=True),
-        desc=("Motion parameter files. Angles are not " "euler angles"),
+        desc=("Motion parameter files. Angles are not euler angles"),
     )
 
 
@@ -204,7 +203,7 @@ class SpaceTimeRealigner(NipyBaseInterface):
             # nipy does not encode euler angles. return in original form of
             # translation followed by rotation vector see:
             # http://en.wikipedia.org/wiki/Rodrigues'_rotation_formula
-            for i, mo in enumerate(motion):
+            for mo in motion:
                 params = [
                     "%.10f" % item for item in np.hstack((mo.translation, mo.rotation))
                 ]
@@ -240,7 +239,7 @@ class TrimOutputSpec(TraitedSpec):
 
 
 class Trim(NipyBaseInterface):
-    """ Simple interface to trim a few volumes from a 4d fmri nifti file
+    """Simple interface to trim a few volumes from a 4d fmri nifti file
 
     Examples
     --------

@@ -1,7 +1,7 @@
-# -*- coding: utf-8 -*-
 """The ants module provides basic functions for interfacing with ants
    functions.
 """
+
 import os
 
 from ...utils.filemanip import ensure_list
@@ -16,7 +16,7 @@ class ANTSInputSpec(ANTSCommandInputSpec):
     fixed_image = InputMultiPath(
         File(exists=True),
         mandatory=True,
-        desc=("image to which the moving image is " "warped"),
+        desc=("image to which the moving image is warped"),
     )
     moving_image = InputMultiPath(
         File(exists=True),
@@ -203,7 +203,7 @@ class ANTS(ANTSCommand):
         return "".join(retval)
 
     def _regularization_constructor(self):
-        return "--regularization {0}[{1},{2}]".format(
+        return "--regularization {}[{},{}]".format(
             self.inputs.regularization,
             self.inputs.regularization_gradient_field_sigma,
             self.inputs.regularization_deformation_field_sigma,
@@ -237,7 +237,7 @@ class ANTS(ANTSCommand):
                 return "--use-Histogram-Matching 1"
             else:
                 return "--use-Histogram-Matching 0"
-        return super(ANTS, self)._format_arg(opt, spec, val)
+        return super()._format_arg(opt, spec, val)
 
     def _list_outputs(self):
         outputs = self._outputs().get()
@@ -418,6 +418,7 @@ class RegistrationInputSpec(ANTSCommandInputSpec):
         "BSpline",
         "MultiLabel",
         "Gaussian",
+        "GenericLabel",
         argstr="%s",
         usedefault=True,
     )
@@ -426,6 +427,7 @@ class RegistrationInputSpec(ANTSCommandInputSpec):
         traits.Tuple(
             traits.Float(), traits.Float()  # Gaussian/MultiLabel (sigma, alpha)
         ),
+        traits.Tuple(traits.Str()),  # GenericLabel (interpolator)
     )
 
     write_composite_transform = traits.Bool(
@@ -451,7 +453,7 @@ class RegistrationInputSpec(ANTSCommandInputSpec):
         usedefault=True,  # This should be true for explicit completeness
         desc=(
             "Initialize linear transforms from the previous stage. By enabling this option, "
-            "the current linear stage transform is directly intialized from the previous "
+            "the current linear stage transform is directly initialized from the previous "
             "stages linear transform; this allows multiple linear stages to be run where "
             "each stage directly updates the estimated linear transform from the previous "
             "stage. (e.g. Translation -> Rigid -> Affine). "
@@ -526,7 +528,7 @@ class RegistrationInputSpec(ANTSCommandInputSpec):
         )
     )
     restrict_deformation = traits.List(
-        traits.List(traits.Enum(0, 1)),
+        traits.List(traits.Range(low=0.0, high=1.0)),
         desc=(
             "This option allows the user to restrict the optimization of "
             "the displacement field, translation, rigid or affine transform "
@@ -583,8 +585,14 @@ class RegistrationInputSpec(ANTSCommandInputSpec):
         usedefault=True,
         desc="The Lower quantile to clip image ranges",
     )
-
-    verbose = traits.Bool(argstr="-v", default_value=False, usedefault=True)
+    random_seed = traits.Int(
+        argstr="--random-seed %d",
+        desc="Fixed seed for random number generation",
+        min_ver="2.3.0",
+    )
+    verbose = traits.Bool(
+        argstr="-v", default_value=False, usedefault=True, nohash=True
+    )
 
 
 class RegistrationOutputSpec(TraitedSpec):
@@ -633,7 +641,7 @@ class Registration(ANTSCommand):
     *stages*. For example first an Affine, then a Rigid, and ultimately a non-linear
     (Syn)-transformation.
 
-    antsRegistration can be initialized using one ore more transforms from moving_image
+    antsRegistration can be initialized using one or more transforms from moving_image
     to fixed_image with the ``initial_moving_transform``-input. For example, when you
     already have a warpfield that corrects for geometrical distortions in an EPI (functional) image,
     that you want to apply before an Affine registration to a structural image.
@@ -857,7 +865,7 @@ class Registration(ANTSCommand):
 --write-composite-transform 0'
 
     One can use multiple similarity metrics in a single registration stage.The Node below first
-    performs a linear registation using only the Mutual Information ('Mattes')-metric.
+    performs a linear registration using only the Mutual Information ('Mattes')-metric.
     In a second stage, it performs a non-linear registration ('Syn') using both a
     Mutual Information and a local cross-correlation ('CC')-metric. Both metrics are weighted
     equally ('metric_weight' is .5 for both). The Mutual Information- metric uses 32 bins.
@@ -1004,12 +1012,12 @@ class Registration(ANTSCommand):
     ]
 
     def __init__(self, **inputs):
-        super(Registration, self).__init__(**inputs)
+        super().__init__(**inputs)
         self._elapsed_time = None
         self._metric_value = None
 
     def _run_interface(self, runtime, correct_return_codes=(0,)):
-        runtime = super(Registration, self)._run_interface(runtime)
+        runtime = super()._run_interface(runtime)
 
         # Parse some profiling info
         output = runtime.stdout or runtime.merged
@@ -1070,7 +1078,7 @@ class Registration(ANTSCommand):
             indexes = list(range(0, len(name_input)))
             specs = list()
             for i in indexes:
-                temp = dict([(k, v[i]) for k, v in items])
+                temp = {k: v[i] for k, v in items}
                 if len(self.inputs.fixed_image) == 1:
                     temp["fixed_image"] = self.inputs.fixed_image[0]
                 else:
@@ -1119,14 +1127,10 @@ class Registration(ANTSCommand):
         return retval
 
     def _format_transform(self, index):
-        retval = []
-        retval.append("%s[ " % self.inputs.transforms[index])
         parameters = ", ".join(
             [str(element) for element in self.inputs.transform_parameters[index]]
         )
-        retval.append("%s" % parameters)
-        retval.append(" ]")
-        return "".join(retval)
+        return f"{self.inputs.transforms[index]}[ {parameters} ]"
 
     def _format_registration(self):
         retval = []
@@ -1187,7 +1191,7 @@ class Registration(ANTSCommand):
                     moving_mask = moving_masks[ii if len(moving_masks) > 1 else 0]
                 else:
                     moving_mask = "NULL"
-                retval.append("--masks [ %s, %s ]" % (fixed_mask, moving_mask))
+                retval.append(f"--masks [ {fixed_mask}, {moving_mask} ]")
         return " ".join(retval)
 
     def _get_outputfilenames(self, inverse=False):
@@ -1240,7 +1244,7 @@ class Registration(ANTSCommand):
                 )
             )
         self._quantilesDone = True
-        return "--winsorize-image-intensities [ %s, %s ]" % (
+        return "--winsorize-image-intensities [ {}, {} ]".format(
             self.inputs.winsorize_lower_quantile,
             self.inputs.winsorize_upper_quantile,
         )
@@ -1267,7 +1271,7 @@ class Registration(ANTSCommand):
     def _format_arg(self, opt, spec, val):
         if opt == "fixed_image_mask":
             if isdefined(self.inputs.moving_image_mask):
-                return "--masks [ %s, %s ]" % (
+                return "--masks [ {}, {} ]".format(
                     self.inputs.fixed_image_mask,
                     self.inputs.moving_image_mask,
                 )
@@ -1293,8 +1297,9 @@ class Registration(ANTSCommand):
                 "BSpline",
                 "MultiLabel",
                 "Gaussian",
+                "GenericLabel",
             ] and isdefined(self.inputs.interpolation_parameters):
-                return "--interpolation %s[ %s ]" % (
+                return "--interpolation {}[ {} ]".format(
                     self.inputs.interpolation,
                     ", ".join(
                         [str(param) for param in self.inputs.interpolation_parameters]
@@ -1306,13 +1311,13 @@ class Registration(ANTSCommand):
             out_filename = self._get_outputfilenames(inverse=False)
             inv_out_filename = self._get_outputfilenames(inverse=True)
             if out_filename and inv_out_filename:
-                return "--output [ %s, %s, %s ]" % (
+                return "--output [ {}, {}, {} ]".format(
                     self.inputs.output_transform_prefix,
                     out_filename,
                     inv_out_filename,
                 )
             elif out_filename:
-                return "--output [ %s, %s ]" % (
+                return "--output [ {}, {} ]".format(
                     self.inputs.output_transform_prefix,
                     out_filename,
                 )
@@ -1327,7 +1332,7 @@ class Registration(ANTSCommand):
         # This feature was removed from recent versions of antsRegistration due to corrupt outputs.
         # elif opt == 'collapse_linear_transforms_to_fixed_image_header':
         #    return self._formatCollapseLinearTransformsToFixedImageHeader()
-        return super(Registration, self)._format_arg(opt, spec, val)
+        return super()._format_arg(opt, spec, val)
 
     def _output_filenames(self, prefix, count, transform, inverse=False):
         self.low_dimensional_transform_map = {
@@ -1386,10 +1391,11 @@ class Registration(ANTSCommand):
                         self.inputs.initial_moving_transform
                         + outputs["reverse_transforms"]
                     )
-                    outputs["reverse_invert_flags"] = (
-                        [not e for e in invert_initial_moving_transform]
-                        + outputs["reverse_invert_flags"]
-                    )  # Prepend
+                    outputs["reverse_invert_flags"] = [
+                        not e for e in invert_initial_moving_transform
+                    ] + outputs[
+                        "reverse_invert_flags"
+                    ]  # Prepend
                     transform_count += len(self.inputs.initial_moving_transform)
                 elif isdefined(self.inputs.initial_moving_transform_com):
                     forward_filename, forward_inversemode = self._output_filenames(
@@ -1502,7 +1508,7 @@ class MeasureImageSimilarityInputSpec(ANTSCommandInputSpec):
         desc="Dimensionality of the fixed/moving image pair",
     )
     fixed_image = File(
-        exists=True, mandatory=True, desc="Image to which the moving image is warped",
+        exists=True, mandatory=True, desc="Image to which the moving image is warped"
     )
     moving_image = File(
         exists=True,
@@ -1510,14 +1516,7 @@ class MeasureImageSimilarityInputSpec(ANTSCommandInputSpec):
         desc="Image to apply transformation to (generally a coregistered functional)",
     )
     metric = traits.Enum(
-        "CC",
-        "MI",
-        "Mattes",
-        "MeanSquares",
-        "Demons",
-        "GC",
-        argstr="%s",
-        mandatory=True,
+        "CC", "MI", "Mattes", "MeanSquares", "Demons", "GC", argstr="%s", mandatory=True
     )
     metric_weight = traits.Float(
         requires=["metric"],
@@ -1614,7 +1613,7 @@ class MeasureImageSimilarity(ANTSCommand):
             )
         else:
             retval = '--masks "{fixed_image_mask}"'.format(
-                fixed_image_mask=self.inputs.fixed_image_mask,
+                fixed_image_mask=self.inputs.fixed_image_mask
             )
         return retval
 
@@ -1623,7 +1622,7 @@ class MeasureImageSimilarity(ANTSCommand):
             return self._metric_constructor()
         elif opt == "fixed_image_mask":
             return self._mask_constructor()
-        return super(MeasureImageSimilarity, self)._format_arg(opt, spec, val)
+        return super()._format_arg(opt, spec, val)
 
     def aggregate_outputs(self, runtime=None, needed_outputs=None):
         outputs = self._outputs()
@@ -1709,6 +1708,11 @@ Transform type
         desc="precision type (default = double)",
         usedefault=True,
     )
+    random_seed = traits.Int(
+        argstr="-e %d",
+        desc="fixed random seed",
+        min_ver="2.3.0",
+    )
 
 
 class RegistrationSynQuickOutputSpec(TraitedSpec):
@@ -1764,7 +1768,7 @@ class RegistrationSynQuick(ANTSCommand):
     def _format_arg(self, name, spec, value):
         if name == "precision_type":
             return spec.argstr % value[0]
-        return super(RegistrationSynQuick, self)._format_arg(name, spec, value)
+        return super()._format_arg(name, spec, value)
 
     def _list_outputs(self):
         outputs = self.output_spec().get()
@@ -1860,13 +1864,13 @@ class CompositeTransformUtil(ANTSCommand):
             return ""
         if name == "out_file" and self.inputs.process == "disassemble":
             return ""
-        return super(CompositeTransformUtil, self)._format_arg(name, spec, value)
+        return super()._format_arg(name, spec, value)
 
     def _list_outputs(self):
         outputs = self.output_spec().get()
         if self.inputs.process == "disassemble":
             outputs["affine_transform"] = os.path.abspath(
-                "00_{}_AffineTransform.mat".format(self.inputs.output_prefix)
+                f"00_{self.inputs.output_prefix}_AffineTransform.mat"
             )
             outputs["displacement_field"] = os.path.abspath(
                 "01_{}_DisplacementFieldTransform.nii.gz".format(
